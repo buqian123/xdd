@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/beego/beego/v2/client/httplib"
+	"github.com/buger/jsonparser"
 )
 
 type Asset struct {
@@ -68,6 +70,9 @@ func (ck *JdCookie) Query() string {
 	msgs := []string{
 		fmt.Sprintf("账号昵称：%s", ck.Nickname),
 	}
+	if ck.Note != "" {
+		msgs = append(msgs, fmt.Sprintf("账号备注：%s", ck.Note))
+	}
 	asset := Asset{}
 	if CookieOK(ck) {
 		cookie := fmt.Sprintf("pt_key=%s;pt_pin=%s;", ck.PtKey, ck.PtPin)
@@ -75,10 +80,14 @@ func (ck *JdCookie) Query() string {
 		var fruit = make(chan string)
 		var pet = make(chan string)
 		var gold = make(chan int64)
+		var egg = make(chan int64)
+		var tyt = make(chan string)
 		go redPacket(cookie, rpc)
 		go initFarm(cookie, fruit)
 		go initPetTown(cookie, pet)
 		go jsGold(cookie, gold)
+		go jxncEgg(cookie, egg)
+		go tytCoupon(cookie, tyt)
 		today := time.Now().Local().Format("2006-01-02")
 		yestoday := time.Now().Local().Add(-time.Hour * 24).Format("2006-01-02")
 		page := 1
@@ -153,12 +162,18 @@ func (ck *JdCookie) Query() string {
 					}
 				}
 			}
+			e := func(m float64) string {
+				if m > 0 {
+					return fmt.Sprintf(`(今日过期%.2f)`, m)
+				}
+				return ""
+			}
 			msgs = append(msgs, []string{
-				fmt.Sprintf("所有红包：%.2f(今日总过期%.2f)元🧧", asset.RedPacket.Total, asset.RedPacket.ToExpire),
-				fmt.Sprintf("京喜红包：%.2f(今日总过期%.2f)元🧧", asset.RedPacket.Jx, asset.RedPacket.ToExpireJx),
-				fmt.Sprintf("极速红包：%.2f(今日总过期%.2f)元🧧", asset.RedPacket.Js, asset.RedPacket.ToExpireJs),
-				fmt.Sprintf("健康红包：%.2f(今日总过期%.2f)元🧧", asset.RedPacket.Jk, asset.RedPacket.ToExpireJk),
-				fmt.Sprintf("京东红包：%.2f(今日总过期%.2f)元🧧", asset.RedPacket.Jd, asset.RedPacket.ToExpireJd),
+				fmt.Sprintf("所有红包：%.2f%s元🧧", asset.RedPacket.Total, e(asset.RedPacket.ToExpire)),
+				fmt.Sprintf("京喜红包：%.2f%s元", asset.RedPacket.Jx, e(asset.RedPacket.ToExpireJx)),
+				fmt.Sprintf("极速红包：%.2f%s元", asset.RedPacket.Js, e(asset.RedPacket.ToExpireJs)),
+				fmt.Sprintf("健康红包：%.2f%s元", asset.RedPacket.Jk, e(asset.RedPacket.ToExpireJk)),
+				fmt.Sprintf("京东红包：%.2f%s元", asset.RedPacket.Jd, e(asset.RedPacket.ToExpireJd)),
 			}...)
 		} else {
 			msgs = append(msgs, "暂无红包数据🧧")
@@ -166,7 +181,9 @@ func (ck *JdCookie) Query() string {
 		msgs = append(msgs, fmt.Sprintf("东东农场：%s", <-fruit))
 		msgs = append(msgs, fmt.Sprintf("东东萌宠：%s", <-pet))
 		gn := <-gold
-		msgs = append(msgs, fmt.Sprintf("极速金币：%d(≈%.2f元)", gn, float64(gn)/10000))
+		msgs = append(msgs, fmt.Sprintf("极速金币：%d(≈%.2f元)💰", gn, float64(gn)/10000))
+		msgs = append(msgs, fmt.Sprintf("惊喜牧场：%d枚鸡蛋🥚", <-egg))
+		msgs = append(msgs, fmt.Sprintf("推一推券：%s", <-tyt))
 	} else {
 		msgs = append(msgs, []string{
 			"提醒：该账号已过期，请重新登录",
@@ -562,4 +579,140 @@ func jsGold(cookie string, state chan int64) { //
 	data, _ := req.Bytes()
 	json.Unmarshal(data, &a)
 	state <- int64(a.Data.BalanceVO.GoldBalance)
+}
+
+func jxncEgg(cookie string, state chan int64) {
+	req := httplib.Get("https://m.jingxi.com/jxmc/queryservice/GetHomePageInfo?channel=7&sceneid=1001&activeid=null&activekey=null&isgift=1&isquerypicksite=1&_stk=activeid%2Cactivekey%2Cchannel%2Cisgift%2Cisquerypicksite%2Csceneid&_ste=1&h5st=20210818211830955%3B4408816258824161%3B10028%3Btk01w8db21b2130ny2eg0siAPpNQgBqjGzYfuG6IP7Z%2BAOB40BiqLQ%2Blglfi540AB%2FaQrTduHbnk61ngEeKn813gFeRD%3Bd9a0b833bf99a29ed726cbffa07ba955cc27d1ff7d2d55552878fc18fc667929&_=1629292710957&sceneval=2&g_login_type=1&g_ty=ls")
+	req.Header("User-Agent", ua)
+	req.Header("Host", "m.jingxi.com")
+	req.Header("Accept", "*/*")
+	req.Header("Connection", "keep-alive")
+	req.Header("Accept-Language", "zh-cn")
+	req.Header("Accept-Encoding", "gzip, deflate, br")
+	req.Header("Referer", "https://st.jingxi.com/pingou/jxmc/index.html?nativeConfig=%7B%22immersion%22%3A1%2C%22toColor%22%3A%22%23e62e0f%22%7D&;__mcwvt=sjcp&ptag=7155.9.95")
+	req.Header("Cookie", cookie)
+	data, _ := req.Bytes()
+
+	egg, _ := jsonparser.GetInt(data, "data", "eggcnt")
+	state <- egg
+}
+
+func tytCoupon(cookie string, state chan string) {
+
+	type DiscountInfo struct {
+		High string        `json:"high"`
+		Info []interface{} `json:"info"`
+	}
+	type ExtInfo struct {
+		Num5              string `json:"5"`
+		Num12             string `json:"12"`
+		Num16             string `json:"16"`
+		Num21             string `json:"21"`
+		Num52             string `json:"52"`
+		Num54             string `json:"54"`
+		Num74             string `json:"74"`
+		BusinessLabel     string `json:"business_label"`
+		LimitOrganization string `json:"limit_organization"`
+		UserLabel         string `json:"user_label"`
+	}
+	type Useable struct {
+		AreaDesc         string        `json:"areaDesc"`
+		AreaType         int           `json:"areaType"`
+		Batchid          string        `json:"batchid"`
+		BeanNumForPerson int           `json:"beanNumForPerson"`
+		BeanNumForPlat   int           `json:"beanNumForPlat"`
+		BeginTime        string        `json:"beginTime"`
+		CanBeSell        bool          `json:"canBeSell"`
+		CanBeShare       bool          `json:"canBeShare"`
+		CompleteTime     string        `json:"completeTime"`
+		CouponKind       int           `json:"couponKind"`
+		CouponStyle      int           `json:"couponStyle"`
+		CouponTitle      string        `json:"couponTitle"`
+		Couponid         string        `json:"couponid"`
+		Coupontype       int           `json:"coupontype"`
+		CreateTime       string        `json:"createTime"`
+		Discount         string        `json:"discount"`
+		DiscountInfo     DiscountInfo  `json:"discountInfo"`
+		EndTime          string        `json:"endTime"`
+		ExpireType       int           `json:"expireType"`
+		ExtInfo          ExtInfo       `json:"extInfo"`
+		HourCoupon       int           `json:"hourCoupon"`
+		IsOverlay        int           `json:"isOverlay"`
+		LimitStr         string        `json:"limitStr"`
+		LinkStr          string        `json:"linkStr"`
+		OperateTime      string        `json:"operateTime"`
+		OrderID          string        `json:"orderId"`
+		OverlayDesc      string        `json:"overlayDesc"`
+		PassKey          string        `json:"passKey"`
+		Pin              string        `json:"pin"`
+		PlatFormInfo     string        `json:"platFormInfo"`
+		Platform         int           `json:"platform"`
+		PlatformDetails  []interface{} `json:"platformDetails"`
+		PwdKey           string        `json:"pwdKey"`
+		Quota            string        `json:"quota"`
+		SellID           string        `json:"sellId"`
+		ShareID          string        `json:"shareId"`
+		ShopID           string        `json:"shopId"`
+		ShopName         string        `json:"shopName"`
+		State            int           `json:"state"`
+		UseTime          string        `json:"useTime"`
+		VenderID         string        `json:"venderId"`
+	}
+	type Coupon struct {
+		Curtimestamp           int       `json:"curtimestamp"`
+		ExpiredCount           int       `json:"expired_count"`
+		IsHideBaiTiaoInJxWxapp int       `json:"isHideBaiTiaoInJxWxapp"`
+		IsHideMailInWxapp      int       `json:"isHideMailInWxapp"`
+		Useable                []Useable `json:"useable"`
+		UseableCount           int       `json:"useable_count"`
+		UsedCount              int       `json:"used_count"`
+	}
+	type AutoGenerated struct {
+		Coupon    Coupon `json:"coupon"`
+		ErrMsg    string `json:"errMsg"`
+		ErrorCode int    `json:"errorCode"`
+		HasNext   int    `json:"hasNext"`
+		Jdpin     string `json:"jdpin"`
+		State     int    `json:"state"`
+		Uin       string `json:"uin"`
+	}
+	a := AutoGenerated{}
+	req := httplib.Get(`https://m.jingxi.com/activeapi/queryjdcouponlistwithfinance?state=1&wxadd=1&filterswitch=1&_=1629296270692&sceneval=2&g_login_type=1&callback=jsonpCBKB&g_ty=ls`)
+	req.Header("Accept", "*/*")
+	req.Header("Connection", "keep-alive")
+	req.Header("Accept-Encoding", "gzip, deflate, br")
+	req.Header("Cookie", cookie)
+	req.Header("Content-Type", "application/x-www-form-urlencoded")
+	req.Header("Host", "m.jingxi.com")
+
+	req.Header("User-Agent", ua)
+	req.Header("Referer", "https://st.jingxi.com/my/coupon/jx.shtml?sceneval=2&ptag=7155.1.18")
+	data, _ := req.Bytes()
+	res := regexp.MustCompile(`jsonpCBKB[(](.*)\s+[)];}catch`).FindSubmatch(data)
+	rt := "暂无数据"
+	if len(res) > 0 {
+		json.Unmarshal(res[1], &a)
+		num := 0
+		toexp := 0
+		tm := int(time.Now().Unix() * 1000)
+		for _, cp := range a.Coupon.Useable {
+			if strings.Contains(cp.CouponTitle, "推推5.01") {
+				num++
+				if Int(cp.EndTime) < tm {
+					toexp++
+				}
+			}
+		}
+		if num == 0 {
+			rt = "无优惠券"
+		} else {
+			rt = fmt.Sprintf("%d张5元优惠券", num)
+			if toexp > 0 {
+				rt += fmt.Sprintf("(今天将过期%d张)⏰", toexp)
+			} else {
+				rt += "🎰"
+			}
+		}
+	}
+	state <- rt
 }
