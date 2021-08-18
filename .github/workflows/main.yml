@@ -1,6 +1,9 @@
 name: Go-new
 
 on:
+  schedule:
+    - cron: '1 */8 * * *'
+  workflow_dispatch:
   push:
     branches: [ main ]
   pull_request:
