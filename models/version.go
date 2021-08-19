@@ -11,7 +11,7 @@ import (
 	"github.com/beego/beego/v2/core/logs"
 )
 
-var version = "2021081904"
+var version = "2021081905"
 var AppName = "xdd"
 var pname = regexp.MustCompile(`/([^/\s]+)`).FindStringSubmatch(os.Args[0])[1]
 
@@ -80,7 +80,7 @@ func Update(msgs ...interface{}) error {
 	if err != nil {
 		return errors.New("小滴滴编译失败：" + err.Error())
 	} else {
-		sendAdminMessagee("小滴滴编译成功", msgs...)
+		sendMessagee("小滴滴编译成功", msgs...)
 	}
 	return nil
 }
