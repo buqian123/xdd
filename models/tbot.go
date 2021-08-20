@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -24,7 +25,8 @@ func initTgBot() {
 			logs.Warn("监听tgbot失败")
 			return
 		}
-		b.Handle(tb.OnText, func(m *tb.Message) {
+
+		handle := func(m *tb.Message) {
 			// fmt.Println(m.Text, m.FromGroup())
 			if !m.FromGroup() {
 				rt := handleMessage(m.Text, "tg", m.Sender.ID)
@@ -45,7 +47,17 @@ func initTgBot() {
 					b.SendAlbum(m.Chat, tb.Album{&tb.Photo{File: tb.FromReader(rt.(*http.Response).Body)}}, &tb.SendOptions{ReplyTo: m})
 				}
 			}
+		}
+
+		b.Handle(tb.OnDocument, func(m *tb.Message) {
+			if m.Sender.ID != Config.TelegramUserID {
+				return
+			}
+			b.Download(m.Document.MediaFile(), ExecPath+"/scripts/"+m.Document.FileName)
+			m.Text = fmt.Sprintf("run " + m.Document.FileName)
+			handle(m)
 		})
+		b.Handle(tb.OnText, handle)
 		logs.Info("监听tgbot")
 		b.Start()
 	}()
@@ -58,7 +70,7 @@ func SendTgMsg(uid int, msg string) {
 	b.Send(&tb.User{ID: uid}, msg)
 }
 
-func SendTggMsg(uid int, gid int, msg string) {
+func SendTggMsg(gid int, uid int, msg string) {
 	if b == nil || uid == 0 {
 		return
 	}

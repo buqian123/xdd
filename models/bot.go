@@ -17,7 +17,7 @@ import (
 var SendQQ = func(a int64, b interface{}) {
 
 }
-var SendQQGroup = func(aint64, b int64, c interface{}) {
+var SendQQGroup = func(a int64, b int64, c interface{}) {
 
 }
 var ListenQQPrivateMessage = func(uid int64, msg string) {
@@ -65,11 +65,11 @@ var sendMessagee = func(msg string, msgs ...interface{}) {
 	case "tg":
 		SendTgMsg(uid, msg)
 	case "tgg":
-		SendTggMsg(uid, gid, msg)
+		SendTggMsg(gid, uid, msg)
 	case "qq":
 		SendQQ(int64(uid), msg)
 	case "qqg":
-		SendQQGroup(int64(uid), int64(gid), msg)
+		SendQQGroup(int64(gid), int64(uid), msg)
 	}
 }
 
@@ -97,16 +97,25 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 	tp := msgs[1].(string)
 	uid := msgs[2].(int)
 	gid := 0
-	if len(msgs) == 4 {
+	if len(msgs) >= 4 {
 		gid = msgs[3].(int)
 	}
-	go NewActiveUser(tp, uid, msgs...)
+
 	switch msg {
+	case "取消屏蔽":
+		if !isAdmin(msgs...) {
+			return "你没有权限操作"
+		}
+		e := db.Model(JdCookie{}).Where(fmt.Sprintf("%s != ?", Hack), False).Update(Hack, False).RowsAffected
+		Save <- &JdCookie{}
+		return fmt.Sprintf("操作成功，更新%d条记录", e)
 	case "status", "状态":
 		if !isAdmin(msgs...) {
 			return "你没有权限操作"
 		}
 		return Count()
+	case "打卡", "签到", "sign":
+		NewActiveUser(tp, uid, msgs...)
 	case "许愿币":
 		return fmt.Sprintf("余额%d", GetCoin(uid))
 	case "qrcode", "扫码", "二维码", "scan":
@@ -131,6 +140,8 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 		sendMessagee("小滴滴重启程序", msgs...)
 		Daemon()
 		return nil
+	case "ping":
+
 	case "查询", "query":
 		cks := GetJdCookies()
 		tmp := []JdCookie{}
@@ -287,6 +298,11 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 						return "你没有权限操作"
 					}
 					runTask(&Task{Path: v}, msgs...)
+				case "cmd", "command":
+					if !isAdmin(msgs...) {
+						return "你没有权限操作"
+					}
+					cmd(v, msgs...)
 				}
 
 			}
@@ -333,6 +349,14 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 					rsp, err := httplib.Get(url).Response()
 					if err != nil {
 						return nil
+					}
+					ctp := rsp.Header.Get("content-type")
+					if ctp == "" {
+						rsp.Header.Get("Content-Type")
+					}
+					if strings.Contains(ctp, "text") || strings.Contains(ctp, "json") {
+						data, _ := ioutil.ReadAll(rsp.Body)
+						return string(data)
 					}
 					return rsp
 				}
