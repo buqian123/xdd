@@ -269,11 +269,11 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 							b++
 						}
 					}
-					if b <= 0 {
-						return "许愿币不足"
+					if b < 5 {
+						return "许愿币不足，需要5个许愿币。"
 					} else {
 						(&JdCookie{}).Push(fmt.Sprintf("%d许愿%s，许愿币余额%d。", uid, v, b))
-						return "收到许愿"
+						return "收到许愿，愿望达成后会自动扣除5个许愿币。"
 					}
 				case "扣除许愿币":
 					id, _ := strconv.Atoi(v)
@@ -309,7 +309,7 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 		}
 		{
 			o := false
-			for _, v := range regexp.MustCompile(`京东账号\d*（(.*)）(.*)】(.*)`).FindAllStringSubmatch(msg, -1) {
+			for _, v := range regexp.MustCompile(`京东账号\d*（(.*)）(.*)】(\S*)`).FindAllStringSubmatch(msg, -1) {
 				if !strings.Contains(v[3], "种子") && !strings.Contains(v[3], "undefined") {
 					pt_pin := url.QueryEscape(v[1])
 					for key, ss := range map[string][]string{

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/beego/beego/v2/client/httplib"
 	"github.com/beego/beego/v2/core/logs"
@@ -17,15 +18,15 @@ type Task struct {
 	Cron    string
 	Path    string
 	Enable  bool
-	Mode    string //obo alo
+	Mode    string
 	Word    string
-	Run     func()
 	Name    string
 	Timeout int
 	Envs    []Env
 	Args    string
 	Ykq     bool
 	Hack    bool
+	From    string
 }
 
 type Env struct {
@@ -185,15 +186,24 @@ func cmd(str string, msgs ...interface{}) {
 			sendMessagee(msg, msgs...)
 		}
 	}()
+	msg := ""
 	reader := bufio.NewReader(stdout)
+	st := time.Now()
 	for {
 		line, err2 := reader.ReadString('\n')
 		if err2 != nil || io.EOF == err2 {
 			break
 		}
-		if len(msgs) > 0 {
-			sendMessagee(strings.Replace(line, "\n", "", -1), msgs...)
+		msg += line
+		nt := time.Now()
+		if (nt.Unix() - st.Unix()) > 1 {
+			go sendMessagee(msg, msgs...)
+			st = nt
+			msg = ""
 		}
+	}
+	if msg != "" {
+		sendMessagee(msg, msgs...)
 	}
 	err = cmd.Wait()
 }
