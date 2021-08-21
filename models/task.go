@@ -24,9 +24,8 @@ type Task struct {
 	Timeout int
 	Envs    []Env
 	Args    string
-	Ykq     bool
 	Hack    bool
-	From    string
+	Git     string
 }
 
 type Env struct {
@@ -35,11 +34,11 @@ type Env struct {
 }
 
 func initTask() {
-	for i := range Config.Tasks {
-		if Config.Tasks[i].Cron != "" {
-			createTask(&Config.Tasks[i])
-		}
-	}
+	// for i := range Config.Tasks {
+	// 	if Config.Tasks[i].Cron != "" {
+	// 		createTask(&Config.Tasks[i])
+	// 	}
+	// }
 }
 
 func createTask(task *Task) {
@@ -55,7 +54,6 @@ func createTask(task *Task) {
 }
 
 func runTask(task *Task, msgs ...interface{}) string {
-	msg := ""
 	if task.Name == "" {
 		slice := strings.Split(task.Path, "/")
 		len := len(slice)
@@ -140,21 +138,25 @@ func runTask(task *Task, msgs ...interface{}) string {
 			sendMessagee(msg, msgs...)
 		}
 	}()
+	msg := ""
 	reader := bufio.NewReader(stdout)
+	st := time.Now()
 	for {
 		line, err2 := reader.ReadString('\n')
 		if err2 != nil || io.EOF == err2 {
 			break
 		}
 		msg += line
-		if !task.Ykq && len(msgs) > 0 {
-			sendMessagee(strings.Replace(line, "\n", "", -1), msgs...)
+		nt := time.Now()
+		if (nt.Unix() - st.Unix()) > 1 {
+			go sendMessagee(msg, msgs...)
+			st = nt
+			msg = ""
 		}
 	}
-	if task.Ykq && len(msgs) > 0 {
+	if msg != "" {
 		sendMessagee(msg, msgs...)
 	}
-	err = cmd.Wait()
 	return msg
 }
 
