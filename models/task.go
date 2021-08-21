@@ -26,6 +26,8 @@ type Task struct {
 	Args    string
 	Hack    bool
 	Git     string
+	Title   string
+	Running bool
 }
 
 type Env struct {
@@ -54,7 +56,11 @@ func createTask(task *Task) {
 }
 
 func runTask(task *Task, msgs ...interface{}) string {
-	if task.Name == "" {
+	task.Running = true
+	path := ""
+	if task.Git != "" {
+		path = task.Git + "/" + task.Name
+	} else {
 		slice := strings.Split(task.Path, "/")
 		len := len(slice)
 		if len == 0 {
@@ -62,40 +68,40 @@ func runTask(task *Task, msgs ...interface{}) string {
 			return ""
 		}
 		task.Name = slice[len-1]
-	}
-	var path = ExecPath + "/scripts/" + task.Name
-	if strings.Contains(task.Path, "http") {
-		f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
-		if err != nil {
-			logs.Warn("打开%s失败，", path, err)
-			return ""
-		}
-		url := task.Path
-		if strings.Contains(url, "raw.githubusercontent.com") {
-			url = GhProxy + url
-		}
-		r, err := httplib.Get(url).Response()
-		if err != nil {
-			logs.Warn("下载%s失败，", task.Path, err)
-		}
-		io.Copy(f, r.Body)
-		f.Close()
-	} else {
-		if path != task.Path && task.Name != task.Path {
+		path = ExecPath + "/scripts/" + task.Name
+		if strings.Contains(task.Path, "http") {
 			f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
 			if err != nil {
 				logs.Warn("打开%s失败，", path, err)
 				return ""
 			}
-			f2, err := os.Open(task.Path)
-			if err != nil {
-				f.Close()
-				logs.Warn("打开%s失败，", path, err)
-				return ""
+			url := task.Path
+			if strings.Contains(url, "raw.githubusercontent.com") {
+				url = GhProxy + url
 			}
-			io.Copy(f, f2)
-			f2.Close()
+			r, err := httplib.Get(url).Response()
+			if err != nil {
+				logs.Warn("下载%s失败，", task.Path, err)
+			}
+			io.Copy(f, r.Body)
 			f.Close()
+		} else {
+			if path != task.Path && task.Name != task.Path {
+				f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
+				if err != nil {
+					logs.Warn("打开%s失败，", path, err)
+					return ""
+				}
+				f2, err := os.Open(task.Path)
+				if err != nil {
+					f.Close()
+					logs.Warn("打开%s失败，", path, err)
+					return ""
+				}
+				io.Copy(f, f2)
+				f2.Close()
+				f.Close()
+			}
 		}
 	}
 	lan := Config.Node
@@ -118,7 +124,11 @@ func runTask(task *Task, msgs ...interface{}) string {
 		logs.Warn("cmd.StdoutPipe: ", err)
 		return ""
 	}
-	cmd.Dir = ExecPath + "/scripts/"
+	if task.Git != "" {
+		cmd.Dir = task.Git
+	} else {
+		cmd.Dir = ExecPath + "/scripts/"
+	}
 	err = cmd.Start()
 	if err != nil {
 		logs.Warn("%v", err)
@@ -157,55 +167,6 @@ func runTask(task *Task, msgs ...interface{}) string {
 	if msg != "" {
 		sendMessagee(msg, msgs...)
 	}
+	task.Running = false
 	return msg
-}
-
-func cmd(str string, msgs ...interface{}) {
-	cmd := exec.Command("sh", "-c", str)
-	stdout, err := cmd.StdoutPipe()
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		logs.Warn("cmd.StdoutPipe: ", err)
-		return
-	}
-	cmd.Dir = ExecPath + "/scripts/"
-	err = cmd.Start()
-	if err != nil {
-		logs.Warn("%v", err)
-		return
-	}
-	go func() {
-		msg := ""
-		reader := bufio.NewReader(stderr)
-		for {
-			line, err2 := reader.ReadString('\n')
-			if err2 != nil || io.EOF == err2 {
-				break
-			}
-			msg += line
-		}
-		if msg != "" {
-			sendMessagee(msg, msgs...)
-		}
-	}()
-	msg := ""
-	reader := bufio.NewReader(stdout)
-	st := time.Now()
-	for {
-		line, err2 := reader.ReadString('\n')
-		if err2 != nil || io.EOF == err2 {
-			break
-		}
-		msg += line
-		nt := time.Now()
-		if (nt.Unix() - st.Unix()) > 1 {
-			go sendMessagee(msg, msgs...)
-			st = nt
-			msg = ""
-		}
-	}
-	if msg != "" {
-		sendMessagee(msg, msgs...)
-	}
-	err = cmd.Wait()
 }

@@ -140,8 +140,14 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 		sendMessagee("小滴滴重启程序", msgs...)
 		Daemon()
 		return nil
-	case "ping":
-
+	case "任务列表":
+		rt := ""
+		for i := range Config.Repos {
+			for j := range Config.Repos[i].Task {
+				rt += fmt.Sprintf("%s\t%s\n", Config.Repos[i].Task[j].Title, Config.Repos[i].Task[j].Cron)
+			}
+		}
+		return rt
 	case "查询", "query":
 		cks := GetJdCookies()
 		tmp := []JdCookie{}
@@ -167,6 +173,9 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 		{ //tyt
 			ss := regexp.MustCompile(`packetId=(\S+)(&|&amp;)currentActId`).FindStringSubmatch(msg)
 			if len(ss) > 0 {
+				if Cdle {
+					return "推毛线啊"
+				}
 				runTask(&Task{Path: "jd_tyt.js", Envs: []Env{
 					{Name: "tytpacketId", Value: ss[1]},
 				}}, msgs...)

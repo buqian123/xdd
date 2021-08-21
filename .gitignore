@@ -23,4 +23,5 @@ conf/reply.php
 jdCookie.js
 scripts/node_modules
 task/*
+*.repo
 repos
