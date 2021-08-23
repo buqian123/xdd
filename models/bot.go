@@ -176,7 +176,10 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 				if Cdle {
 					return "推毛线啊"
 				}
-				runTask(&Task{Path: "jd_tyt.js"}, msgs...)
+				runTask(&Task{Path: "jd_tyt.js", Envs: []Env{
+					{Name: "tytpacketId", Value: ss[1]},
+					// {Name: "pins", Value: "xxxx"},
+				}}, msgs...)
 				return nil
 			}
 		}
@@ -197,7 +200,7 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 							ck.Telegram = uid
 						}
 						if HasKey(ck.PtKey) {
-							sendMessagee(fmt.Sprintf("作弊，许愿币-1，余额%d", RemCoin(uid)), msgs...)
+							sendMessagee(fmt.Sprintf("作弊，许愿币-1，余额%d", RemCoin(uid, 1)), msgs...)
 						} else {
 							if nck, err := GetJdCookie(ck.PtPin); err == nil {
 								nck.InPool(ck.PtKey)
@@ -215,7 +218,7 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 							}
 						}
 					} else {
-						sendMessagee(fmt.Sprintf("无效，许愿币-1，余额%d", RemCoin(uid)), msgs...)
+						sendMessagee(fmt.Sprintf("无效，许愿币-1，余额%d", RemCoin(uid, 1)), msgs...)
 					}
 				}
 				go func() {
@@ -229,6 +232,8 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 			if len(s) > 0 {
 				v := s[2]
 				switch s[1] {
+				case "send":
+					b.Send(tgg, v)
 				case "查询", "query":
 					if !isAdmin(msgs...) {
 						return "你没有权限操作"
@@ -270,17 +275,13 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 					return nil
 
 				case "许愿":
-					b := 0
-					for _, ck := range GetJdCookies() {
-						if uid == ck.QQ || uid == ck.Telegram {
-							b++
-						}
-					}
+					b := GetCoin(uid)
 					if b < 5 {
 						return "许愿币不足，需要5个许愿币。"
 					} else {
 						(&JdCookie{}).Push(fmt.Sprintf("%d许愿%s，许愿币余额%d。", uid, v, b))
-						return "收到许愿，愿望达成后会自动扣除5个许愿币。"
+
+						return fmt.Sprintf("收到许愿，已扣除5个许愿币，余额%d。", RemCoin(uid, 5))
 					}
 				case "扣除许愿币":
 					id, _ := strconv.Atoi(v)

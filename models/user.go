@@ -89,13 +89,13 @@ func AddCoin(uid int) int {
 	return u.Coin
 }
 
-func RemCoin(uid int) int {
+func RemCoin(uid int, num int) int {
 	var u User
 	db.Where("number = ?", uid).First(&u)
 	db.Model(u).Updates(map[string]interface{}{
-		"coin": gorm.Expr("coin-1"),
+		"coin": gorm.Expr(fmt.Sprintf("coin-%d", num)),
 	})
-	u.Coin--
+	u.Coin -= num
 	return u.Coin
 }
 

@@ -11,6 +11,7 @@ import (
 )
 
 var b *tb.Bot
+var tgg *tb.Chat
 
 func initTgBot() {
 	go func() {
@@ -30,6 +31,7 @@ func initTgBot() {
 		handle := func(m *tb.Message) {
 			// fmt.Println(m.Text, m.FromGroup())
 			if !m.FromGroup() {
+
 				rt := handleMessage(m.Text, "tg", m.Sender.ID)
 				// fmt.Println(rt)
 				switch rt.(type) {
@@ -39,10 +41,14 @@ func initTgBot() {
 					b.SendAlbum(m.Sender, tb.Album{&tb.Photo{File: tb.FromReader(rt.(*http.Response).Body)}})
 				}
 			} else {
+				if tgg == nil {
+					tgg = m.Chat
+				}
 				rt := handleMessage(m.Text, "tgg", m.Sender.ID, int(m.Chat.ID), m.Sender)
 				// fmt.Println(rt)
 				switch rt.(type) {
 				case string:
+
 					b.Send(m.Chat, rt.(string), &tb.SendOptions{ReplyTo: m})
 				case *http.Response:
 					b.SendAlbum(m.Chat, tb.Album{&tb.Photo{File: tb.FromReader(rt.(*http.Response).Body)}}, &tb.SendOptions{ReplyTo: m})
