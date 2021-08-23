@@ -33,6 +33,7 @@ jobs:
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         file: xdd_*
-        tag: New
+        ###tag: New
+        tag_name: ${{ steps.tag.outputs.release_tag }}
         overwrite: true
         file_glob: true
