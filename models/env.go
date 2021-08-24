@@ -24,3 +24,9 @@ func GetEnvs() []Env {
 	db.Find(&envs)
 	return envs
 }
+
+func GetEnv(name string) string {
+	env := &Env{}
+	db.Where("name = ?", name).First(env)
+	return env.Value
+}

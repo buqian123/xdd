@@ -154,8 +154,16 @@ var codeSignals = []CodeSignal{
 		},
 	},
 	{
-		Command: []string{"get-ua"},
+		Command: []string{"get-ua", "ua"},
 		Handle: func(sender *Sender) interface{} {
+			if !sender.IsAdmin {
+				coin := GetCoin(sender.UserID)
+				if coin < 0 {
+					return "许愿币不足以查看UserAgent。"
+				}
+				sender.Reply("查看一次扣1个许愿币。")
+				RemCoin(sender.UserID, 1)
+			}
 			return ua
 		},
 	},
@@ -172,7 +180,7 @@ var codeSignals = []CodeSignal{
 	{
 		Command: []string{"任务列表"},
 		Admin:   true,
-		Handle: func(sender *Sender) interface{} {
+		Handle: func(_ *Sender) interface{} {
 			rt := ""
 			for i := range Config.Repos {
 				for j := range Config.Repos[i].Task {
@@ -187,7 +195,8 @@ var codeSignals = []CodeSignal{
 		Handle: func(sender *Sender) interface{} {
 			cks := GetJdCookies()
 			tmp := []JdCookie{}
-			if !sender.IsAdmin {
+			a := sender.JoinContens()
+			if !sender.IsAdmin || a == "" {
 				for _, ck := range cks {
 					if strings.Contains(sender.Type, "qq") {
 						if ck.QQ == sender.UserID {
@@ -203,7 +212,6 @@ var codeSignals = []CodeSignal{
 					return "你尚未绑定🐶东账号，请对我说扫码，扫码后即可查询账户资产信息。"
 				}
 			} else {
-				a := sender.JoinContens()
 				if s := strings.Split(a, "-"); len(s) == 2 {
 					for i, ck := range cks {
 						if i+1 >= Int(s[0]) && i+1 <= Int(s[1]) {
@@ -274,15 +282,102 @@ var codeSignals = []CodeSignal{
 		},
 	},
 	{
-		Command: []string{"环境变量", "environments"},
+		Command: []string{"环境变量", "environments", "envs"},
 		Admin:   true,
-		Handle: func(sender *Sender) interface{} {
+		Handle: func(_ *Sender) interface{} {
 			rt := []string{}
 			envs := GetEnvs()
+			if len(envs) == 0 {
+				return "未设置任何环境变量"
+			}
 			for _, env := range envs {
-				rt = append(rt, fmt.Sprintf(`export "%s"="%s"`, env.Name, env.Value))
+				rt = append(rt, fmt.Sprintf(`%s="%s"`, env.Name, env.Value))
 			}
 			return strings.Join(rt, "\n")
 		},
 	},
+	{
+		Command: []string{"get-env", "env", "e"},
+		Handle: func(sender *Sender) interface{} {
+			ct := sender.JoinContens()
+			if ct == "" {
+				return "未指定变量名"
+			}
+			value := GetEnv(ct)
+			if value == "" {
+				return "未设置环境变量"
+			}
+			return fmt.Sprintf("环境变量的值为：" + value)
+		},
+	},
+	{
+		Command: []string{"set-env", "se"},
+		Admin:   true,
+		Handle: func(sender *Sender) interface{} {
+			env := &Env{}
+			if len(sender.Contents) >= 2 {
+				env.Name = sender.Contents[0]
+				env.Value = strings.Join(sender.Contents[1:], " ")
+			} else if len(sender.Contents) == 1 {
+				ss := regexp.MustCompile(`([^'"=]+)=['"]?([^=]+)['"]?`).FindStringSubmatch(sender.Contents[0])
+				if len(ss) != 3 {
+					return "无法解析"
+				}
+				env.Name = ss[1]
+				env.Value = ss[2]
+			} else {
+				return "???"
+			}
+			ExportEnv(env)
+			return "操作成功"
+		},
+	},
+	{
+		Command: []string{"unset-env", "ue"},
+		Admin:   true,
+		Handle: func(sender *Sender) interface{} {
+			UnExportEnv(&Env{
+				Name: sender.JoinContens(),
+			})
+			return "操作成功"
+		},
+	},
+	{
+		Command: []string{"降级"},
+		Admin:   true,
+		Handle: func(sender *Sender) interface{} {
+			return "滚"
+		},
+	},
+	{
+		Command: []string{"。。。"},
+		Handle: func(sender *Sender) interface{} {
+			return "你很无语吗？"
+		},
+	},
+	{
+		Command: []string{"祈祷"},
+		Handle: func(sender *Sender) interface{} {
+			if _, ok := mx[sender.UserID]; ok {
+				return "你祈祷过啦，等下次我忘记了再来吧。"
+			}
+			mx[sender.UserID] = true
+			AddCoin(sender.UserID)
+			return "许愿币+1"
+		},
+	},
+	{
+		Command: []string{"reply", "回复"},
+		Admin:   true,
+		Handle: func(sender *Sender) interface{} {
+			if len(sender.Contents) >= 2 {
+				replies[sender.Contents[0]] = strings.Join(sender.Contents[1:], " ")
+			} else {
+				return "操作失败"
+			}
+			return "操作成功"
+		},
+	},
 }
+
+var mx = map[int]bool{}
