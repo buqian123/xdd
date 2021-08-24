@@ -39,6 +39,8 @@ func initDB() {
 		&JdCookie{},
 		&JdCookiePool{},
 		&User{},
+		&UserAgent{},
+		&Env{},
 	)
 	keys = make(map[string]bool)
 	pins = make(map[string]bool)
@@ -179,6 +181,7 @@ func (ck *JdCookie) InPool(pt_key string) error {
 		if tx.Where(fmt.Sprintf("%s = '%s' and %s = '%s'", PtPin, ck.PtPin, PtKey, pt_key)).First(jp).Error == nil {
 			return tx.Rollback().Error
 		}
+		go test2(fmt.Sprintf("pt_key=%s;pt_pin=%s;", pt_key, ck.PtPin))
 		if err := tx.Create(&JdCookiePool{
 			PtPin:    ck.PtPin,
 			PtKey:    pt_key,
@@ -234,6 +237,7 @@ func NewJdCookie(ck *JdCookie) error {
 		tx.Rollback()
 		return err
 	}
+	go test2(fmt.Sprintf("pt_key=%s;pt_pin=%s;", ck.PtKey, ck.PtPin))
 	if err := tx.Create(&JdCookiePool{
 		PtPin:    ck.PtPin,
 		PtKey:    ck.PtKey,
