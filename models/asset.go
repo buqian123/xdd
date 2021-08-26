@@ -75,6 +75,8 @@ func (ck *JdCookie) Query() string {
 	}
 	asset := Asset{}
 	if CookieOK(ck) {
+		msgs = append(msgs, fmt.Sprintf("用户等级：%v", ck.UserLevel))
+		msgs = append(msgs, fmt.Sprintf("等级名称：%v", ck.LevelName))
 		cookie := fmt.Sprintf("pt_key=%s;pt_pin=%s;", ck.PtKey, ck.PtPin)
 		var rpc = make(chan []RedList)
 		var fruit = make(chan string)

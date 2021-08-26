@@ -41,6 +41,7 @@ func initDB() {
 		&User{},
 		&UserAgent{},
 		&Env{},
+		&Wish{},
 	)
 	keys = make(map[string]bool)
 	pins = make(map[string]bool)
@@ -95,6 +96,8 @@ type JdCookie struct {
 	Help         string `gorm:"column:Help;default:false" validate:"oneof=true false"`
 	Pool         string `gorm:"-"`
 	Hack         string `gorm:"column:Hack"  validate:"oneof=true false"`
+	UserLevel    string `gorm:"column:UserLevel"`
+	LevelName    string `gorm:"column:LevelName"`
 }
 
 type JdCookiePool struct {
@@ -105,6 +108,8 @@ type JdCookiePool struct {
 	CreateAt string `gorm:"column:CreateAt"`
 }
 
+var UserLevel = "UserLevel"
+var LevelName = "LevelName"
 var ScanedAt = "ScanedAt"
 var LoseAt = "LoseAt"
 var CreateAt = "CreateAt"
@@ -145,9 +150,13 @@ func Date() string {
 	return time.Now().Local().Format("2006-01-02")
 }
 
-func GetJdCookies() []JdCookie {
+func GetJdCookies(sbs ...func(sb *gorm.DB) *gorm.DB) []JdCookie {
 	cks := []JdCookie{}
-	db.Order("priority desc").Find(&cks)
+	tb := db
+	for _, sb := range sbs {
+		tb = sb(tb)
+	}
+	tb.Order("priority desc").Find(&cks)
 	return cks
 }
 

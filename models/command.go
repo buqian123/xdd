@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -18,13 +19,14 @@ type CodeSignal struct {
 }
 
 type Sender struct {
-	UserID    int
-	ChatID    int
-	Type      string
-	Contents  []string
-	MessageID int
-	Username  string
-	IsAdmin   bool
+	UserID            int
+	ChatID            int
+	Type              string
+	Contents          []string
+	MessageID         int
+	Username          string
+	IsAdmin           bool
+	ReplySenderUserID int
 }
 
 func (sender *Sender) Reply(msg string) {
@@ -52,6 +54,46 @@ func (sender *Sender) IsTG() bool {
 	return strings.Contains(sender.Type, "tg")
 }
 
+func (sender *Sender) handleJdCookies(handle func(ck *JdCookie)) error {
+	cks := GetJdCookies()
+	a := sender.JoinContens()
+	ok := false
+	if !sender.IsAdmin || a == "" {
+		for _, ck := range cks {
+			if strings.Contains(sender.Type, "qq") {
+				if ck.QQ == sender.UserID {
+					if !ok {
+						ok = true
+					}
+					handle(&ck)
+				}
+			} else if strings.Contains(sender.Type, "tg") {
+				if ck.Telegram == sender.UserID {
+					if !ok {
+						ok = true
+					}
+					handle(&ck)
+				}
+			}
+		}
+		if !ok {
+			sender.Reply("你尚未绑定🐶东账号，请对我说扫码，扫码后即可查询账户资产信息。")
+			return errors.New("你尚未绑定🐶东账号，请对我说扫码，扫码后即可查询账户资产信息。")
+		}
+	} else {
+		cks = LimitJdCookie(cks, a)
+		if len(cks) == 0 {
+			sender.Reply("没有匹配的账号")
+			return errors.New("没有匹配的账号")
+		} else {
+			for _, ck := range cks {
+				handle(&ck)
+			}
+		}
+	}
+	return nil
+}
+
 var codeSignals = []CodeSignal{
 	{
 		Command: []string{"status", "状态"},
@@ -63,12 +105,12 @@ var codeSignals = []CodeSignal{
 	{
 		Command: []string{"sign", "打卡", "签到"},
 		Handle: func(sender *Sender) interface{} {
-			if sender.Type == "tgg" {
-				sender.Type = "tg"
-			}
-			if sender.Type == "qqg" {
-				sender.Type = "qq"
-			}
+			//if sender.Type == "tgg" {
+			//	sender.Type = "tg"
+			//}
+			//if sender.Type == "qqg" {
+			//	sender.Type = "qq"
+			//}
 			zero, _ := time.ParseInLocation("2006-01-02", time.Now().Local().Format("2006-01-02"), time.Local)
 			var u User
 			var ntime = time.Now()
@@ -107,7 +149,9 @@ var codeSignals = []CodeSignal{
 					"coin":      gorm.Expr(fmt.Sprintf("coin+%d", coin)),
 				})
 				u.Coin += coin
-				return fmt.Sprintf("你是打卡第%d人，奖励%d个许愿币，许愿币余额%d。", total[0]+1, coin, u.Coin)
+				sender.Reply(fmt.Sprintf("你是打卡第%d人，奖励%d个许愿币，许愿币余额%d。", total[0]+1, coin, u.Coin))
+				ReturnCoin(sender)
+				return ""
 			}
 			return nil
 		},
@@ -193,56 +237,9 @@ var codeSignals = []CodeSignal{
 	{
 		Command: []string{"查询", "query"},
 		Handle: func(sender *Sender) interface{} {
-			cks := GetJdCookies()
-			tmp := []JdCookie{}
-			a := sender.JoinContens()
-			if !sender.IsAdmin || a == "" {
-				for _, ck := range cks {
-					if strings.Contains(sender.Type, "qq") {
-						if ck.QQ == sender.UserID {
-							tmp = append(tmp, ck)
-						}
-					} else if strings.Contains(sender.Type, "tg") {
-						if ck.Telegram == sender.UserID {
-							tmp = append(tmp, ck)
-						}
-					}
-				}
-				if len(tmp) == 0 {
-					return "你尚未绑定🐶东账号，请对我说扫码，扫码后即可查询账户资产信息。"
-				}
-			} else {
-				if s := strings.Split(a, "-"); len(s) == 2 {
-					for i, ck := range cks {
-						if i+1 >= Int(s[0]) && i+1 <= Int(s[1]) {
-							tmp = append(tmp, ck)
-						}
-					}
-				} else if x := regexp.MustCompile(`^[\s\d,]+$`).FindString(a); x != "" {
-					xx := regexp.MustCompile(`(\d+)`).FindAllStringSubmatch(a, -1)
-					for i, ck := range cks {
-						for _, x := range xx {
-							if fmt.Sprint(i+1) == x[1] {
-								tmp = append(tmp, ck)
-							}
-						}
-
-					}
-				} else {
-					a = strings.Replace(a, " ", "", -1)
-					for _, ck := range cks {
-						if strings.Contains(ck.Note, a) || strings.Contains(ck.Nickname, a) || strings.Contains(ck.PtPin, a) {
-							tmp = append(tmp, ck)
-						}
-					}
-				}
-				if len(tmp) == 0 {
-					return "找不到匹配的账号"
-				}
-			}
-			for _, ck := range tmp {
+			sender.handleJdCookies(func(ck *JdCookie) {
 				sender.Reply(ck.Query())
-			}
+			})
 			return nil
 		},
 	},
@@ -255,21 +252,140 @@ var codeSignals = []CodeSignal{
 		},
 	},
 	{
-		Command: []string{"许愿", "wish", "hope", "want"},
+		Command: []string{"翻翻乐"},
 		Handle: func(sender *Sender) interface{} {
-			b := GetCoin(sender.UserID)
-			if b < 5 {
-				return "许愿币不足，需要5个许愿币。"
+			cost := Int(sender.JoinContens())
+			if cost <= 0 {
+				cost = 1
 			}
-			(&JdCookie{}).Push(fmt.Sprintf("%d许愿%s，许愿币余额%d。", sender.UserID, sender.JoinContens(), b))
-			return fmt.Sprintf("收到许愿，已扣除5个许愿币，余额%d。", RemCoin(sender.UserID, 5))
+			u := &User{}
+			if err := db.Where("number = ?", sender.UserID).First(u).Error; err != nil || u.Coin < cost {
+				return "许愿币不足，先去打卡吧。"
+			}
+			if time.Now().Unix()%10 < 6 && !sender.IsAdmin {
+				sender.Reply(fmt.Sprintf("很遗憾你失去了%d枚许愿币。", cost))
+				cost = -cost
+			} else {
+				sender.Reply(fmt.Sprintf("很幸运你获得%d枚许愿币，10秒后自动转入余额。", cost))
+				time.Sleep(time.Second * 10)
+				sender.Reply(fmt.Sprintf("%d枚许愿币已到账。", cost))
+			}
+			db.Model(u).Update("coin", gorm.Expr(fmt.Sprintf("coin + %d", cost)))
+			return nil
+		},
+	},
+	{
+		Command: []string{"许愿", "愿望", "wish", "hope", "want"},
+		Handle: func(sender *Sender) interface{} {
+			ct := sender.JoinContens()
+			if ct == "" {
+				rt := []string{}
+				ws := []Wish{}
+				tb := db
+				if !sender.IsAdmin {
+					tb = tb.Where("user_number", sender.UserID)
+				} else {
+					tb = tb.Where("status != 1")
+				}
+				tb.Order("id asc").Find(&ws)
+				if len(ws) == 0 {
+					return "请对我说 许愿 巴拉巴拉"
+				}
+				for i, w := range ws {
+					status := "未达成"
+					if w.Status == 1 {
+						status = "已撤销"
+					} else if w.Status == 2 {
+						status = "已达成"
+					}
+					id := i + 1
+					if sender.IsAdmin {
+						id = w.ID
+					}
+					rt = append(rt, fmt.Sprintf("%d.\t %s [%s]", id, w.Content, status))
+				}
+				return strings.Join(rt, "\n")
+			}
+			cost := 25
+			if sender.IsAdmin {
+				cost = 1
+			}
+			tx := db.Begin()
+			u := &User{}
+			if err := tx.Where("number = ?", sender.UserID).First(u).Error; err != nil {
+				tx.Rollback()
+				return "许愿币不足，先去打卡吧。"
+			}
+			w := &Wish{
+				Content:    ct,
+				Coin:       cost,
+				UserNumber: sender.UserID,
+			}
+			if u.Coin < cost {
+				tx.Rollback()
+				return fmt.Sprintf("许愿币不足，需要%d个许愿币。", cost)
+			}
+			if err := tx.Create(w).Error; err != nil {
+				tx.Rollback()
+				return err.Error()
+			}
+			if tx.Model(u).Update("coin", gorm.Expr(fmt.Sprintf("coin - %d", cost))).RowsAffected == 0 {
+				tx.Rollback()
+				return "扣款失败"
+			}
+			tx.Commit()
+			(&JdCookie{}).Push(fmt.Sprintf("有人许愿%s，愿望id为%d。", w.Content, w.ID))
+			return fmt.Sprintf("收到愿望，已扣除%d个许愿币。", cost)
+		},
+	},
+	{
+		Command: []string{"愿望达成"},
+		Admin:   true,
+		Handle: func(sender *Sender) interface{} {
+			w := &Wish{}
+			id := Int(sender.JoinContens())
+			if id == 0 {
+				return "目标未指定"
+			}
+			if db.First(w, id).Error != nil {
+				return "目标不存在"
+			}
+			if w.Status == 1 {
+				return "愿望已撤销"
+			}
+			if w.Status == 2 {
+				return "愿望已达成"
+			}
+			if db.Model(w).Update("status", 2).RowsAffected == 0 {
+				return "操作失败"
+			}
+			sender.Reply(fmt.Sprintf("达成了愿望 %s", w.Content))
+			return nil
 		},
 	},
 	{
 		Command: []string{"run", "执行", "运行"},
 		Admin:   true,
 		Handle: func(sender *Sender) interface{} {
-			runTask(&Task{Path: sender.JoinContens()}, sender)
+			name := sender.Contents[0]
+			pins := ""
+			if len(sender.Contents) > 1 {
+				sender.Contents = sender.Contents[1:]
+				err := sender.handleJdCookies(func(ck *JdCookie) {
+					pins += "&" + ck.PtPin
+				})
+				if err != nil {
+					return nil
+				}
+			}
+			envs := []Env{}
+			if pins != "" {
+				envs = append(envs, Env{
+					Name:  "pins",
+					Value: pins,
+				})
+			}
+			runTask(&Task{Path: name, Envs: envs}, sender)
 			return nil
 		},
 	},
@@ -277,7 +393,11 @@ var codeSignals = []CodeSignal{
 		Command: []string{"cmd", "command", "命令"},
 		Admin:   true,
 		Handle: func(sender *Sender) interface{} {
-			cmd(sender.JoinContens(), sender)
+			ct := sender.JoinContens()
+			if regexp.MustCompile(`rm\s+-rf`).FindString(ct) != "" {
+				return "over"
+			}
+			cmd(ct, sender)
 			return nil
 		},
 	},
@@ -311,7 +431,7 @@ var codeSignals = []CodeSignal{
 		},
 	},
 	{
-		Command: []string{"set-env", "se"},
+		Command: []string{"set-env", "se", "export"},
 		Admin:   true,
 		Handle: func(sender *Sender) interface{} {
 			env := &Env{}
@@ -319,7 +439,7 @@ var codeSignals = []CodeSignal{
 				env.Name = sender.Contents[0]
 				env.Value = strings.Join(sender.Contents[1:], " ")
 			} else if len(sender.Contents) == 1 {
-				ss := regexp.MustCompile(`([^'"=]+)=['"]?([^=]+)['"]?`).FindStringSubmatch(sender.Contents[0])
+				ss := regexp.MustCompile(`^([^'"=]+)=['"]?([^=]+?)['"]?$`).FindStringSubmatch(sender.Contents[0])
 				if len(ss) != 3 {
 					return "无法解析"
 				}
@@ -333,7 +453,7 @@ var codeSignals = []CodeSignal{
 		},
 	},
 	{
-		Command: []string{"unset-env", "ue"},
+		Command: []string{"unset-env", "ue", "unexport", "de"},
 		Admin:   true,
 		Handle: func(sender *Sender) interface{} {
 			UnExportEnv(&Env{
@@ -344,7 +464,6 @@ var codeSignals = []CodeSignal{
 	},
 	{
 		Command: []string{"降级"},
-		Admin:   true,
 		Handle: func(sender *Sender) interface{} {
 			return "滚"
 		},
@@ -367,6 +486,13 @@ var codeSignals = []CodeSignal{
 		},
 	},
 	{
+		Command: []string{"撤销愿望"},
+		Handle: func(sender *Sender) interface{} {
+			ReturnCoin(sender)
+			return nil
+		},
+	},
+	{
 		Command: []string{"reply", "回复"},
 		Admin:   true,
 		Handle: func(sender *Sender) interface{} {
@@ -378,6 +504,176 @@ var codeSignals = []CodeSignal{
 			return "操作成功"
 		},
 	},
+	{
+		Command: []string{"help", "助力"},
+		Admin:   true,
+		Handle: func(sender *Sender) interface{} {
+			sender.handleJdCookies(func(ck *JdCookie) {
+				ck.Update(Help, True)
+				sender.Reply(fmt.Sprintf("已设置助力账号%s(%s)", ck.PtPin, ck.Nickname))
+			})
+			return nil
+		},
+	},
+	{
+		Command: []string{"tool", "工具人", "unhelp", "取消助力"},
+		Admin:   true,
+		Handle: func(sender *Sender) interface{} {
+			sender.handleJdCookies(func(ck *JdCookie) {
+				ck.Update(Help, False)
+				sender.Reply(fmt.Sprintf("已设置取消助力账号%s(%s)", ck.PtPin, ck.Nickname))
+			})
+			return nil
+		},
+	},
+	{
+		Command: []string{"屏蔽", "hack"},
+		Admin:   true,
+		Handle: func(sender *Sender) interface{} {
+			sender.handleJdCookies(func(ck *JdCookie) {
+				ck.Update(Hack, True)
+				sender.Reply(fmt.Sprintf("已设置屏蔽助力账号%s(%s)", ck.PtPin, ck.Nickname))
+			})
+			return nil
+		},
+	},
+	{
+		Command: []string{"取消屏蔽", "unhack"},
+		Admin:   true,
+		Handle: func(sender *Sender) interface{} {
+			sender.handleJdCookies(func(ck *JdCookie) {
+				ck.Update(Hack, False)
+				sender.Reply(fmt.Sprintf("已设置取消屏蔽助力账号%s(%s)", ck.PtPin, ck.Nickname))
+			})
+			return nil
+		},
+	},
+	{
+		Command: []string{"转账"},
+		Handle: func(sender *Sender) interface{} {
+			if sender.ReplySenderUserID == 0 {
+				return "没有转账目标"
+			}
+			amount := Int(sender.JoinContens())
+			if !sender.IsAdmin {
+				if amount <= 0 {
+					return "转账金额必须大于等于1"
+				}
+			}
+			if sender.UserID == sender.ReplySenderUserID {
+				return "转账成功"
+			}
+			if amount > 10000 {
+				return "单笔转账限额10000"
+			}
+			cost := 1
+			tx := db.Begin()
+			s := &User{}
+			if err := db.Where("number = ?", sender.UserID).First(&s).Error; err != nil {
+				tx.Rollback()
+				return "你还没有开通钱包功能"
+			}
+			if s.Coin < amount {
+				tx.Rollback()
+				return "余额不足"
+			}
+			real := amount
+			if !sender.IsAdmin {
+				if amount <= cost {
+					tx.Rollback()
+					return fmt.Sprintf("转账失败，手续费需要%d个许愿币。", cost)
+				}
+				real = amount - cost
+			} else {
+				cost = 0
+			}
+			r := &User{}
+			if err := db.Where("number = ?", sender.ReplySenderUserID).First(&r).Error; err != nil {
+				tx.Rollback()
+				return "他还没有开通钱包功能"
+			}
+			if tx.Model(User{}).Where("number = ?", sender.UserID).Updates(map[string]interface{}{
+				"coin": gorm.Expr(fmt.Sprintf("coin - %d", amount)),
+			}).RowsAffected == 0 {
+				tx.Rollback()
+				return "转账失败"
+			}
+			if tx.Model(User{}).Where("number = ?", sender.ReplySenderUserID).Updates(map[string]interface{}{
+				"coin": gorm.Expr(fmt.Sprintf("coin + %d", real)),
+			}).RowsAffected == 0 {
+				tx.Rollback()
+				return "转账失败"
+			}
+			tx.Commit()
+			return fmt.Sprintf("转账成功，你的余额%d，他的余额%d，手续费%d。", s.Coin-amount, r.Coin+real, cost)
+		},
+	},
+	{
+		Command: []string{"献祭", "导出"},
+		Admin:   true,
+		Handle: func(sender *Sender) interface{} {
+			sender.handleJdCookies(func(ck *JdCookie) {
+				sender.Reply(fmt.Sprintf("pt_key=%s;pt_pin=%s;", ck.PtKey, ck.PtPin))
+			})
+			return nil
+		},
+	},
 }
 
 var mx = map[int]bool{}
+
+func LimitJdCookie(cks []JdCookie, a string) []JdCookie {
+	ncks := []JdCookie{}
+	if s := strings.Split(a, "-"); len(s) == 2 {
+		for i, ck := range cks {
+			if i+1 >= Int(s[0]) && i+1 <= Int(s[1]) {
+				ncks = append(ncks, ck)
+			}
+		}
+	} else if x := regexp.MustCompile(`^[\s\d,]+$`).FindString(a); x != "" {
+		xx := regexp.MustCompile(`(\d+)`).FindAllStringSubmatch(a, -1)
+		for i, ck := range cks {
+			for _, x := range xx {
+				if fmt.Sprint(i+1) == x[1] {
+					ncks = append(ncks, ck)
+				}
+			}
+
+		}
+	} else if a != "" {
+		a = strings.Replace(a, " ", "", -1)
+		for _, ck := range cks {
+			if strings.Contains(ck.Note, a) || strings.Contains(ck.Nickname, a) || strings.Contains(ck.PtPin, a) {
+				ncks = append(ncks, ck)
+			}
+		}
+	}
+	return ncks
+}
+
+func ReturnCoin(sender *Sender) {
+	tx := db.Begin()
+	ws := []Wish{}
+	if err := tx.Where("status = 0 and user_number = ?", sender.UserID).Find(&ws).Error; err != nil {
+		tx.Rollback()
+		sender.Reply(err.Error())
+	}
+	for _, w := range ws {
+		if tx.Model(User{}).Where("number = ? ", sender.UserID).Update(
+			"coin", gorm.Expr(fmt.Sprintf("coin + %d", w.Coin)),
+		).RowsAffected == 0 {
+			tx.Rollback()
+			sender.Reply("愿望未达成退还许愿币失败。")
+			return
+		}
+		sender.Reply(fmt.Sprintf("愿望未达成退还%d枚许愿币。", w.Coin))
+		if tx.Model(&w).Update(
+			"status", 1,
+		).RowsAffected == 0 {
+			tx.Rollback()
+			sender.Reply("愿望未达成退还许愿币失败。")
+			return
+		}
+	}
+	tx.Commit()
+}
