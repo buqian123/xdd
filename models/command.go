@@ -157,7 +157,7 @@ var codeSignals = []CodeSignal{
 		},
 	},
 	{
-		Command: []string{"coin", "许愿币"},
+		Command: []string{"coin", "许愿币", "余额"},
 		Handle: func(sender *Sender) interface{} {
 			return fmt.Sprintf("余额%d", GetCoin(sender.UserID))
 		},
@@ -255,14 +255,19 @@ var codeSignals = []CodeSignal{
 		Command: []string{"翻翻乐"},
 		Handle: func(sender *Sender) interface{} {
 			cost := Int(sender.JoinContens())
-			if cost <= 0 {
+			if cost <= 0 || cost > 10000 {
 				cost = 1
 			}
 			u := &User{}
 			if err := db.Where("number = ?", sender.UserID).First(u).Error; err != nil || u.Coin < cost {
 				return "许愿币不足，先去打卡吧。"
 			}
-			if time.Now().Unix()%10 < 6 && !sender.IsAdmin {
+			baga := 0
+			if u.Coin > 100000 {
+				baga = u.Coin
+				cost = u.Coin
+			}
+			if time.Now().Nanosecond()%10 < 6 || baga > 0 {
 				sender.Reply(fmt.Sprintf("很遗憾你失去了%d枚许愿币。", cost))
 				cost = -cost
 			} else {
@@ -306,7 +311,7 @@ var codeSignals = []CodeSignal{
 				}
 				return strings.Join(rt, "\n")
 			}
-			cost := 25
+			cost := 66
 			if sender.IsAdmin {
 				cost = 1
 			}
@@ -475,7 +480,7 @@ var codeSignals = []CodeSignal{
 		},
 	},
 	{
-		Command: []string{"祈祷"},
+		Command: []string{"祈祷", "祈愿", "祈福"},
 		Handle: func(sender *Sender) interface{} {
 			if _, ok := mx[sender.UserID]; ok {
 				return "你祈祷过啦，等下次我忘记了再来吧。"
@@ -551,31 +556,34 @@ var codeSignals = []CodeSignal{
 	{
 		Command: []string{"转账"},
 		Handle: func(sender *Sender) interface{} {
+			cost := 1
 			if sender.ReplySenderUserID == 0 {
-				return "没有转账目标"
+				return "没有转账目标。"
 			}
 			amount := Int(sender.JoinContens())
 			if !sender.IsAdmin {
 				if amount <= 0 {
-					return "转账金额必须大于等于1"
+					return "转账金额必须大于等于1。"
 				}
 			}
 			if sender.UserID == sender.ReplySenderUserID {
-				return "转账成功"
+				db.Model(User{}).Where("number = ?", sender.UserID).Updates(map[string]interface{}{
+					"coin": gorm.Expr(fmt.Sprintf("coin - %d", cost)),
+				})
+				return fmt.Sprintf("转账成功，扣除手续费%d枚许愿币。", cost)
 			}
 			if amount > 10000 {
-				return "单笔转账限额10000"
+				return "单笔转账限额10000。"
 			}
-			cost := 1
 			tx := db.Begin()
 			s := &User{}
 			if err := db.Where("number = ?", sender.UserID).First(&s).Error; err != nil {
 				tx.Rollback()
-				return "你还没有开通钱包功能"
+				return "你还没有开通钱包功能。"
 			}
 			if s.Coin < amount {
 				tx.Rollback()
-				return "余额不足"
+				return "余额不足。"
 			}
 			real := amount
 			if !sender.IsAdmin {
