@@ -50,6 +50,14 @@ func InitReplies() {
 }
 
 var handleMessage = func(msgs ...interface{}) interface{} {
+	
+	
+		if strings.Contains(msg, "wskey="){
+	cmd(fmt.Sprintf('wskey="%s"
+	python3 wspt.py ', msg), sender)return nil
+	}
+		
+	
 	msg := msgs[0].(string)
 	args := strings.Split(msg, " ")
 	head := args[0]
@@ -182,9 +190,4 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 	}
 	return nil
 }
-		{
-		if strings.Contains(msg, "wskey="){
-	cmd(fmt.Sprintf('wskey="%s"
-	python3 wspt.py ', msg), sender)return nil
-	}
-		}
+		
