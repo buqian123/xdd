@@ -50,14 +50,6 @@ func InitReplies() {
 }
 
 var handleMessage = func(msgs ...interface{}) interface{} {
-	
-	
-		if strings.Contains(msg, "wskey="){
-	cmd(fmt.Sprintf('wskey="%s"
-	python3 wspt.py ', msg), sender)return nil
-	}
-		
-	
 	msg := msgs[0].(string)
 	args := strings.Split(msg, " ")
 	head := args[0]
@@ -92,6 +84,12 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 	}
 	switch msg {
 	default:
+	{
+   if strings.Contains(msg, "wskey=") {
+    cmd(fmt.Sprintf(`wskey="%s" python3 wspt.py`, msg), sender)
+    return nil
+  	 }
+ 		 }
 		{ //tyt
 			ss := regexp.MustCompile(`packetId=(\S+)(&|&amp;)currentActId`).FindStringSubmatch(msg)
 			if len(ss) > 0 {
@@ -109,8 +107,6 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 				return nil
 			}
 		}
-
-
 		{ 
 			ss := regexp.MustCompile(`pt_key=([^;=\s]+);pt_pin=([^;=\s]+)`).FindAllStringSubmatch(msg, -1)
 
@@ -190,4 +186,3 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 	}
 	return nil
 }
-		
